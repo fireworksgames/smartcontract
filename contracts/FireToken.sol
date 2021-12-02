@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.6;
+pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
@@ -10,12 +10,12 @@ contract FireToken is ERC20, ERC20Burnable, Ownable {
 
     constructor() ERC20("FireToken", "FIRE")  {}
 
-    function mint(address to, uint256 amount) public onlyOwner {
+    function mint(address to, uint256 amount) external onlyOwner {
         require(MaxSupply >= totalSupply() + amount,"Exceed the MaxSupply!" );
         _mint(to, amount);
     }
 
-    function  maxSupply() public view returns (uint256){
+    function  maxSupply() external view returns (uint256){
         return MaxSupply;
     }
 
