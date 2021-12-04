@@ -4,8 +4,9 @@ pragma solidity 0.8.10;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./helpers/TransactionThrottler.sol";
 
-contract FireToken is ERC20, ERC20Burnable, Ownable {
+contract FireToken is ERC20, ERC20Burnable, Ownable, TransactionThrottler {
     uint256 MaxSupply = 10 * (10**9) * 10**decimals();
 
     constructor() ERC20("FireToken", "FIRE") {}
@@ -30,5 +31,13 @@ contract FireToken is ERC20, ERC20Burnable, Ownable {
         for (uint256 i = 0; i < to.length; i++) {
             transfer(to[i], amount[i]);
         }
+    }
+
+    function _transfer(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal virtual override transactionThrottler(sender, recipient, amount) {
+        super._transfer(sender, recipient, amount);
     }
 }
