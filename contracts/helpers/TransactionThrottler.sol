@@ -22,6 +22,24 @@ contract TransactionThrottler is Ownable {
     event MarkedWhitelisted(address indexed account, bool isWhitelisted);
     event MarkedUnthrottled(address indexed account, bool isUnthrottled);
 
+    struct WithdrawalLimit {
+        uint256 time;
+        uint256 amount;
+    }
+
+    mapping(address => bool) private _isExcludedFromWithdrawalLimit;
+    mapping(address => bool) private _isExcludedFromReceivingLimit;
+    mapping(address => WithdrawalLimit) private _withdrawalLimits;
+    bool private _withdrawalLimitActive;
+    uint256 private _withdrawalLimit;
+    uint256 private _withdrawalLimitTimeSpan;
+
+    event MarkedExcludedFromWithdrawalLimit(address indexed account, bool isExcluded);
+    event MarkedExcludedFromReceivingLimit(address indexed account, bool isExcluded);
+    event WithdrawalLimitActiveChanged(bool active);
+    event WithdrawalLimitChanged(uint256 withdrawalLimit);
+    event WithdrawalLimitTimeSpanChanged(uint256 timeSpan);
+
     function initAntibot() external onlyOwner {
         require(!_initlialized, "Protection: Already initialized");
         _initlialized = true;
@@ -35,6 +53,14 @@ contract TransactionThrottler is Ownable {
         emit TradingTimeChanged(_tradingStart);
         emit MaxTransferAmountChanged(_maxTransferAmount);
         emit RestrictionActiveChanged(_restrictionActive);
+
+        _withdrawalLimitActive = true;
+        _withdrawalLimit = 150_000 * 10**18;
+        _withdrawalLimitTimeSpan = 7 days;
+
+        emit WithdrawalLimitActiveChanged(_withdrawalLimitActive);
+        emit WithdrawalLimitChanged(_withdrawalLimit);
+        emit WithdrawalLimitTimeSpanChanged(_withdrawalLimitTimeSpan);
     }
 
     function setTradingStart(uint256 _time) external onlyOwner {
@@ -44,6 +70,7 @@ contract TransactionThrottler is Ownable {
     }
 
     function setMaxTransferAmount(uint256 _amount) external onlyOwner {
+        require(_amount >= (1000 * (10**18)) || _amount == 0, "1k is the min amount");
         _maxTransferAmount = _amount;
         emit MaxTransferAmountChanged(_maxTransferAmount);
     }
@@ -73,6 +100,43 @@ contract TransactionThrottler is Ownable {
         return _isWhitelisted[account];
     }
 
+    function excludeFromWithdrawalLimit(address _account, bool _excluded) external onlyOwner {
+        require(_account != address(0), "Zero address");
+        _isExcludedFromWithdrawalLimit[_account] = _excluded;
+        emit MarkedExcludedFromWithdrawalLimit(_account, _excluded);
+    }
+
+    function isExcludedFromWithdrawalLimit(address account) external view returns (bool) {
+        return _isExcludedFromWithdrawalLimit[account];
+    }
+
+    function excludeFromReceivingLimit(address _account, bool _excluded) external onlyOwner {
+        require(_account != address(0), "Zero address");
+        _isExcludedFromReceivingLimit[_account] = _excluded;
+        emit MarkedExcludedFromReceivingLimit(_account, _excluded);
+    }
+
+    function isExcludedFromReceivingLimit(address account) external view returns (bool) {
+        return _isExcludedFromReceivingLimit[account];
+    }
+
+    function setWithdrawalLimitActive(bool _active) external onlyOwner {
+        _withdrawalLimitActive = _active;
+        emit WithdrawalLimitActiveChanged(_withdrawalLimitActive);
+    }
+
+    function setWithdrawalLimit(uint256 _limit) external onlyOwner {
+        require(_limit >= (1000 * (10**18)), "1k is the min limit");
+        _withdrawalLimit = _limit;
+        emit WithdrawalLimitChanged(_withdrawalLimit);
+    }
+
+    function setWithdrawalLimitTimeSpan(uint256 _timeSpan) external {
+        require(_timeSpan <= 3 days, "3 days is the max time");
+        _withdrawalLimitTimeSpan = _timeSpan;
+        emit WithdrawalLimitTimeSpanChanged(_withdrawalLimitTimeSpan);
+    }
+
     function isActive() private view returns (bool) {
         return _endTime == 0 || _endTime >= block.timestamp;
     }
@@ -91,7 +155,11 @@ contract TransactionThrottler is Ownable {
             require(block.timestamp >= _tradingStart, "Protection: Transfers disabled");
 
             if (_maxTransferAmount > 0) {
-                require(amount <= _maxTransferAmount, "Protection: Limit exceeded");
+                require(amount <= _maxTransferAmount, "Protection: Max transfer amount exceeded");
+            }
+
+            if (_withdrawalLimitActive) {
+                require(_canWithdraw(sender, recipient, amount), "Protection: Withdrawal limit exceeded");
             }
 
             if (!_isWhitelisted[recipient]) {
@@ -105,5 +173,28 @@ contract TransactionThrottler is Ownable {
             }
         }
         _;
+    }
+
+    function _canWithdraw(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) private returns (bool) {
+        bool result = true;
+
+        if (!(_isExcludedFromWithdrawalLimit[sender] || _isExcludedFromReceivingLimit[recipient])) {
+            if (_withdrawalLimits[sender].time + _withdrawalLimitTimeSpan <= block.timestamp) {
+                _withdrawalLimits[sender].amount = 0;
+            }
+
+            if (_withdrawalLimits[sender].amount + amount <= _withdrawalLimit) {
+                _withdrawalLimits[sender].amount += amount;
+                _withdrawalLimits[sender].time = block.timestamp;
+            } else {
+                result = false;
+            }
+        }
+
+        return result;
     }
 }

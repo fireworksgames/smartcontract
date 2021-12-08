@@ -26,6 +26,7 @@ describe("Anti-bot", () => {
     token = await makeSUT();
     await token.mint(deployer.address, TEN_BILLION_MILLION_TOKENS);
     await token.initAntibot();
+    await token.setWithdrawalLimitActive(false);
   });
 
   describe("license", () => {
@@ -115,7 +116,9 @@ describe("Anti-bot", () => {
       await token.transfer(uniswap.address, getBigNumber(150000));
 
       // transfer
-      await expect(token.connect(uniswap).transfer(alice.address, getBigNumber(150000))).to.be.revertedWith("Protection: Limit exceeded");
+      await expect(token.connect(uniswap).transfer(alice.address, getBigNumber(150000))).to.be.revertedWith(
+        "Protection: Max transfer amount exceeded"
+      );
 
       // prevents 1 tx per 30 sec limit
       await advanceTimeAndBlock(30);
@@ -123,7 +126,7 @@ describe("Anti-bot", () => {
       // transferFrom
       await token.connect(alice).approve(bob.address, getBigNumber(150000));
       await expect(token.connect(bob).transferFrom(alice.address, bob.address, getBigNumber(150000))).to.be.revertedWith(
-        "Protection: Limit exceeded"
+        "Protection: Max transfer amount exceeded"
       );
     });
 
@@ -284,7 +287,9 @@ describe("Anti-bot", () => {
 
       await advanceTimeAndBlock(3600);
       // should be restricted by limit
-      await expect(token.connect(alice).transfer(bob.address, getBigNumber(200000))).to.be.revertedWith("Protection: Limit exceeded");
+      await expect(token.connect(alice).transfer(bob.address, getBigNumber(200000))).to.be.revertedWith(
+        "Protection: Max transfer amount exceeded"
+      );
 
       // should transfer correctly
       await expect(token.connect(alice).transfer(bob.address, getBigNumber(50000)))
@@ -307,7 +312,7 @@ describe("Anti-bot", () => {
     it("it should correctly change max restriction amount", async function () {
       await token.transfer(alice.address, getBigNumber(200000));
 
-      await expect(token.connect(alice).transfer(bob.address, getBigNumber(200000))).to.be.revertedWith("Protection: Limit exceeded");
+      await expect(token.connect(alice).transfer(bob.address, getBigNumber(200000))).to.be.revertedWith("");
 
       await expect(token.setMaxTransferAmount(getBigNumber(200000)))
         .to.emit(token, "MaxTransferAmountChanged")
@@ -372,7 +377,9 @@ describe("Anti-bot", () => {
       await token.transfer(uniswap.address, getBigNumber(1000000));
 
       // reverted on amount exceeded
-      await expect(token.connect(uniswap).transfer(alice.address, getBigNumber(1000000))).to.be.revertedWith("Protection: Limit exceeded");
+      await expect(token.connect(uniswap).transfer(alice.address, getBigNumber(1000000))).to.be.revertedWith(
+        "Protection: Max transfer amount exceeded"
+      );
 
       // transfer
       await expect(token.connect(uniswap).transfer(alice.address, getBigNumber(1000)))
